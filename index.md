@@ -1,3 +1,10 @@
+---
+layout: default
+title: "Home"
+---
+
+![Fitbit to Apple Health Sync Logo](/assets/images/fit-sync-logo.png)
+
 # Fitbit to Apple Health Sync App
 
 Welcome to the **Fitbit to Apple Health Sync App** repository. This iOS 17 app synchronizes all available data from your Fitbit account to Apple Health, ensuring all your health and fitness data is consolidated in one place.
@@ -14,4 +21,4 @@ Welcome to the **Fitbit to Apple Health Sync App** repository. This iOS 17 app s
 1. **Clone the Repository**
 
    ```bash
-   git clone https://github.com/yourusername/fitbit-apple-health-sync.git
+   git clone https://github.com/yourusername/your-repo-name.git

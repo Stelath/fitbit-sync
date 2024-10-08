@@ -1,6 +1,11 @@
+---
+layout: default
+title: "Privacy Policy"
+---
+
 # Privacy Policy
 
-_Last updated: [10/08/2024]_
+_Last updated: October 8, 2024_
 
 ## 1. Introduction
 
@@ -40,3 +45,5 @@ By using the App, you consent to this Privacy Policy.
 ## 9. Contact Information
 
 For questions about this Privacy Policy, please open an issue on the GitHub repository.
+
+[Back to Home](/)

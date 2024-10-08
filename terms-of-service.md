@@ -1,11 +1,12 @@
+```markdown
+---
+layout: default
+title: "Terms of Service"
 ---
 
-## TERMS_OF_SERVICE.md
-
-```markdown
 # Terms of Service
 
-_Last updated: [10/08/2024]_
+_Last updated: October 8, 2024_
 
 ## 1. Acceptance of Terms
 
@@ -40,3 +41,5 @@ We reserve the right to modify these Terms at any time. Changes will be updated 
 ## 8. Contact Information
 
 For questions about these Terms, please open an issue on the GitHub repository.
+
+[Back to Home](/)

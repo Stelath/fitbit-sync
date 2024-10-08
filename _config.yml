@@ -1,0 +1,19 @@
+title: "Fitbit to Apple Health Sync App"
+description: "Sync your Fitbit data with Apple Health seamlessly."
+theme: jekyll-theme-minimal
+baseurl: ""
+url: "https://stelath.github.io/fit-sync"
+
+# Navigation Links
+nav_links:
+  - name: "Home"
+    link: "/"
+  - name: "Terms of Service"
+    link: "/terms-of-service"
+  - name: "Privacy Policy"
+    link: "/privacy-policy"
+
+# Exclude files from the build
+exclude:
+  - README.md
+  - LICENSE
