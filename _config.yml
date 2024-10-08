@@ -2,7 +2,7 @@ title: "Fitbit to Apple Health Sync App"
 description: "Sync your Fitbit data with Apple Health seamlessly."
 theme: jekyll-theme-minimal
 baseurl: ""
-url: "https://stelath.github.io/fit-sync"
+url: "https://stelath.github.io/fitbit-sync"
 
 # Navigation Links
 nav_links:
