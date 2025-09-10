@@ -69,6 +69,33 @@ struct SyncStatus: Codable {
     var hasAnyData: Bool {
         return steps != .noData || heartRate != .noData || sleep != .noData || distance != .noData
     }
+    
+    var hasPartialData: Bool {
+        // A day has partial data if:
+        // 1. At least one data type is synced
+        // 2. At least one data type is not synced (failed, notSynced, or syncing)
+        // 3. Not all data types are noData
+        
+        let dataTypes: [SyncState] = [steps, heartRate, sleep, distance]
+        
+        // Check if all are noData - if so, this isn't partial, it's empty
+        let allNoData = dataTypes.allSatisfy { $0 == .noData }
+        if allNoData { return false }
+        
+        // Check if all are synced - if so, this isn't partial, it's complete
+        let allSynced = dataTypes.allSatisfy { $0 == .synced }
+        if allSynced { return false }
+        
+        // Check if at least one is synced
+        let hasSyncedData = dataTypes.contains { $0 == .synced }
+        
+        // Check if at least one is not synced (but not noData)
+        let hasUnsyncedData = dataTypes.contains { 
+            $0 == .notSynced || $0 == .failed || $0 == .syncing
+        }
+        
+        return hasSyncedData && hasUnsyncedData
+    }
 }
 
 enum SyncState: String, Codable, CaseIterable {

@@ -21,6 +21,22 @@ class FitbitAPIManager: NSObject, ObservableObject {
     private var accessToken: String?
     private var refreshToken: String?
     private var codeVerifier: String?
+    
+    // Rate limiting properties
+    private var lastAPICallTime: Date = Date.distantPast
+    private let apiCallDelay: TimeInterval = 1.5 // 1.5 seconds between API calls
+    private var rateLimitResetTime: Date?
+    
+    func isRateLimited() -> Bool {
+        if let resetTime = rateLimitResetTime {
+            return Date() < resetTime
+        }
+        return false
+    }
+    
+    func getRateLimitResetTime() -> Date? {
+        return rateLimitResetTime
+    }
 
     func isAuthenticated() -> Bool {
         // Load token from keychain if not in memory
@@ -188,74 +204,104 @@ class FitbitAPIManager: NSObject, ObservableObject {
     }
 
     func fetchAllData(for date: Date = Date(), completion: @escaping (FitbitData?) -> Void) {
+        fetchAllData(for: [date], completion: completion)
+    }
+    
+    func fetchAllData(for dates: [Date], completion: @escaping (FitbitData?) -> Void) {
         guard accessToken != nil else {
             print("❌ No access token available")
             completion(nil)
             return
         }
         
+        // Check if we're currently rate limited
+        if let resetTime = rateLimitResetTime, Date() < resetTime {
+            let remainingTime = Int(resetTime.timeIntervalSinceNow / 60) // minutes
+            print("⏱️ Still rate limited. Reset in \(remainingTime) minutes")
+            completion(nil)
+            return
+        }
+        
+        guard !dates.isEmpty else {
+            print("ℹ️ No dates to sync")
+            completion(FitbitData(stepsData: [], heartRateData: [], sleepData: [], distanceData: []))
+            return
+        }
+        
+        print("🔄 Fetching data for \(dates.count) dates")
+        
         let group = DispatchGroup()
-        var stepsData: [StepData] = []
-        var heartRateData: [HeartRateData] = []
-        var sleepData: [SleepData] = []
-        var distanceData: [DistanceData] = []
+        var allStepsData: [StepData] = []
+        var allHeartRateData: [HeartRateData] = []
+        var allSleepData: [SleepData] = []
+        var allDistanceData: [DistanceData] = []
         var hasError = false
         
-        // Fetch steps data
-        group.enter()
-        fetchStepsData(for: date) { steps in
-            if let steps = steps {
-                stepsData = steps
-            } else {
-                hasError = true
+        for date in dates {
+            // Fetch steps data for this date
+            group.enter()
+            fetchStepsData(for: date) { steps in
+                if let steps = steps {
+                    allStepsData.append(contentsOf: steps)
+                } else {
+                    hasError = true
+                }
+                group.leave()
             }
-            group.leave()
-        }
-        
-        // Fetch heart rate data
-        group.enter()
-        fetchHeartRateData(for: date) { heartRate in
-            if let heartRate = heartRate {
-                heartRateData = heartRate
-            } else {
-                hasError = true
+            
+            // Fetch heart rate data for this date
+            group.enter()
+            fetchHeartRateData(for: date) { heartRate in
+                if let heartRate = heartRate {
+                    allHeartRateData.append(contentsOf: heartRate)
+                } else {
+                    hasError = true
+                }
+                group.leave()
             }
-            group.leave()
-        }
-        
-        // Fetch sleep data
-        group.enter()
-        fetchSleepData(for: date) { sleep in
-            if let sleep = sleep {
-                sleepData = sleep
-            } else {
-                hasError = true
+            
+            // Fetch sleep data for this date
+            group.enter()
+            fetchSleepData(for: date) { sleep in
+                if let sleep = sleep {
+                    allSleepData.append(contentsOf: sleep)
+                } else {
+                    hasError = true
+                }
+                group.leave()
             }
-            group.leave()
-        }
-        
-        // Fetch distance data
-        group.enter()
-        fetchDistanceData(for: date) { distance in
-            if let distance = distance {
-                distanceData = distance
-            } else {
-                hasError = true
+            
+            // Fetch distance data for this date
+            group.enter()
+            fetchDistanceData(for: date) { distance in
+                if let distance = distance {
+                    allDistanceData.append(contentsOf: distance)
+                } else {
+                    hasError = true
+                }
+                group.leave()
             }
-            group.leave()
         }
         
         group.notify(queue: .main) {
             if hasError {
+                // Check if error was due to rate limiting
+                if let resetTime = self.rateLimitResetTime, Date() < resetTime {
+                    // Don't complete with nil immediately, let SyncViewModel handle the rate limit message
+                    print("⏱️ Sync failed due to rate limiting")
+                }
                 completion(nil)
             } else {
+                // Clear any previous rate limit since we succeeded
+                self.rateLimitResetTime = nil
+                
                 let fitbitData = FitbitData(
-                    stepsData: stepsData,
-                    heartRateData: heartRateData,
-                    sleepData: sleepData,
-                    distanceData: distanceData
+                    stepsData: allStepsData,
+                    heartRateData: allHeartRateData,
+                    sleepData: allSleepData,
+                    distanceData: allDistanceData
                 )
-            completion(fitbitData)
+                completion(fitbitData)
             }
         }
     }
@@ -264,7 +310,7 @@ class FitbitAPIManager: NSObject, ObservableObject {
     
     private func fetchStepsData(for date: Date, completion: @escaping ([StepData]?) -> Void) {
         let dateString = formatDateForAPI(date)
-        let url = "\(Constants.fitbitBaseURL)/\(Constants.fitbitAPIVersion)/user/-/activities/steps/date/\(dateString)/7d.json"
+        let url = "\(Constants.fitbitBaseURL)/\(Constants.fitbitAPIVersion)/user/-/activities/steps/date/\(dateString)/1d.json"
         
         performAPIRequest(url: url, responseType: StepsResponse.self) { response in
             guard let response = response else {
@@ -283,7 +329,7 @@ class FitbitAPIManager: NSObject, ObservableObject {
     
     private func fetchHeartRateData(for date: Date, completion: @escaping ([HeartRateData]?) -> Void) {
         let dateString = formatDateForAPI(date)
-        let url = "\(Constants.fitbitBaseURL)/\(Constants.fitbitAPIVersion)/user/-/activities/heart/date/\(dateString)/7d.json"
+        let url = "\(Constants.fitbitBaseURL)/\(Constants.fitbitAPIVersion)/user/-/activities/heart/date/\(dateString)/1d/1min.json"
         
         performAPIRequest(url: url, responseType: HeartRateResponse.self) { response in
             guard let response = response else {
@@ -293,10 +339,14 @@ class FitbitAPIManager: NSObject, ObservableObject {
             
             let heartRateData = response.activities_heart.compactMap { dataPoint -> HeartRateData? in
                 guard let date = self.parseAPIDate(dataPoint.dateTime) else { return nil }
+                
+                let intradayReadings = response.activities_heart_intraday?.dataset ?? []
+                
                 return HeartRateData(
                     date: date,
                     restingHeartRate: dataPoint.value.restingHeartRate,
-                    zones: dataPoint.value.heartRateZones ?? []
+                    zones: dataPoint.value.heartRateZones ?? [],
+                    intradayReadings: intradayReadings
                 )
             }
             completion(heartRateData)
@@ -360,7 +410,7 @@ class FitbitAPIManager: NSObject, ObservableObject {
     
     private func fetchDistanceData(for date: Date, completion: @escaping ([DistanceData]?) -> Void) {
         let dateString = formatDateForAPI(date)
-        let url = "\(Constants.fitbitBaseURL)/\(Constants.fitbitAPIVersion)/user/-/activities/distance/date/\(dateString)/7d.json"
+        let url = "\(Constants.fitbitBaseURL)/\(Constants.fitbitAPIVersion)/user/-/activities/distance/date/\(dateString)/1d.json"
         
         performAPIRequest(url: url, responseType: DistanceResponse.self) { response in
             guard let response = response else {
@@ -380,11 +430,31 @@ class FitbitAPIManager: NSObject, ObservableObject {
     // MARK: - Generic API Request Method
     
     private func performAPIRequest<T: Codable>(url: String, responseType: T.Type, completion: @escaping (T?) -> Void) {
+        performAPIRequestWithRetry(url: url, responseType: responseType, retryCount: 0, completion: completion)
+    }
+    
+    private func performAPIRequestWithRetry<T: Codable>(url: String, responseType: T.Type, retryCount: Int, completion: @escaping (T?) -> Void) {
         guard let accessToken = accessToken,
               let requestURL = URL(string: url) else {
             completion(nil)
             return
         }
+        
+        // Rate limiting: ensure minimum delay between API calls
+        let now = Date()
+        let timeSinceLastCall = now.timeIntervalSince(lastAPICallTime)
+        
+        if timeSinceLastCall < apiCallDelay {
+            let delayNeeded = apiCallDelay - timeSinceLastCall
+            print("⏱️ Rate limiting: waiting \(String(format: "%.1f", delayNeeded))s before API call")
+            
+            DispatchQueue.global().asyncAfter(deadline: .now() + delayNeeded) {
+                self.performAPIRequestWithRetry(url: url, responseType: responseType, retryCount: retryCount, completion: completion)
+            }
+            return
+        }
+        
+        lastAPICallTime = now
         
         var request = URLRequest(url: requestURL)
         request.addValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
@@ -399,29 +469,66 @@ class FitbitAPIManager: NSObject, ObservableObject {
             if let httpResponse = response as? HTTPURLResponse {
                 print("📡 API Response status: \(httpResponse.statusCode) for \(url)")
                 
+                // Handle rate limiting (HTTP 429) - fail fast
+                if httpResponse.statusCode == 429 {
+                    print("🔄 Rate limited (HTTP 429) - telling user to wait")
+                    
+                    // Try to parse error response for better information
+                    if let responseString = String(data: data, encoding: .utf8) {
+                        print("Rate limit response: \(responseString)")
+                    }
+                    
+                    // Set rate limit reset time (1 hour from now)
+                    self.rateLimitResetTime = Date().addingTimeInterval(3600) // 1 hour
+                    
+                    completion(nil)
+                    return
+                }
+                
                 // Handle token expiration
                 if httpResponse.statusCode == 401 {
                     print("🔄 Access token expired, attempting refresh...")
                     self.refreshAccessToken { success in
                         if success {
                             // Retry the request
-                            self.performAPIRequest(url: url, responseType: responseType, completion: completion)
+                            self.performAPIRequestWithRetry(url: url, responseType: responseType, retryCount: retryCount, completion: completion)
                         } else {
                             completion(nil)
                         }
                     }
                     return
                 }
+                
+                // Handle other HTTP errors
+                if httpResponse.statusCode >= 400 {
+                    print("❌ HTTP Error \(httpResponse.statusCode)")
+                    
+                    // Try to parse as error response first
+                    if let errorResponse = try? JSONDecoder().decode(FitbitErrorResponse.self, from: data) {
+                        print("Fitbit error: \(errorResponse.error.message)")
+                    } else if let responseString = String(data: data, encoding: .utf8) {
+                        print("Error response: \(responseString)")
+                    }
+                    
+                    completion(nil)
+                    return
+                }
             }
             
+            // Try to decode successful response
             do {
                 let decodedResponse = try JSONDecoder().decode(responseType, from: data)
                 completion(decodedResponse)
             } catch {
                 print("❌ Failed to decode response: \(error)")
-                if let responseString = String(data: data, encoding: .utf8) {
+                
+                // Check if this might be an error response we should handle differently
+                if let errorResponse = try? JSONDecoder().decode(FitbitErrorResponse.self, from: data) {
+                    print("Fitbit error in successful response: \(errorResponse.error.message)")
+                } else if let responseString = String(data: data, encoding: .utf8) {
                     print("Raw response: \(responseString)")
                 }
+                
                 completion(nil)
             }
         }.resume()

@@ -211,23 +211,70 @@ class HealthKitManager {
             return []
         }
         
-        return heartRateData.compactMap { heartRateData in
-            guard let restingHeartRate = heartRateData.restingHeartRate else { return nil }
+        var allSamples: [HKQuantitySample] = []
+        
+        for heartRateData in heartRateData {
+            let calendar = Calendar.current
+            let startOfDay = calendar.startOfDay(for: heartRateData.date)
             
-            let quantity = HKQuantity(unit: HKUnit.count().unitDivided(by: .minute()), 
-                                    doubleValue: Double(restingHeartRate))
+            // Create samples from intraday readings (minute-by-minute data)
+            for intradayReading in heartRateData.intradayReadings {
+                guard let sampleTime = parseIntradayTime(intradayReading.time, baseDate: startOfDay) else {
+                    continue
+                }
+                
+                let quantity = HKQuantity(unit: HKUnit.count().unitDivided(by: .minute()), 
+                                        doubleValue: Double(intradayReading.value))
+                
+                // Create a 1-minute sample
+                let endTime = calendar.date(byAdding: .minute, value: 1, to: sampleTime) ?? sampleTime
+                
+                let sample = HKQuantitySample(
+                    type: heartRateType,
+                    quantity: quantity,
+                    start: sampleTime,
+                    end: endTime
+                )
+                allSamples.append(sample)
+            }
             
-            // Create a sample for the resting heart rate at the start of the day
-            let startOfDay = Calendar.current.startOfDay(for: heartRateData.date)
-            let sampleTime = Calendar.current.date(byAdding: .minute, value: 1, to: startOfDay) ?? heartRateData.date
-            
-            return HKQuantitySample(
-                type: heartRateType,
-                quantity: quantity,
-                start: startOfDay,
-                end: sampleTime
-            )
+            // If no intraday data but we have resting heart rate, create a single sample
+            if heartRateData.intradayReadings.isEmpty, let restingHeartRate = heartRateData.restingHeartRate {
+                let quantity = HKQuantity(unit: HKUnit.count().unitDivided(by: .minute()), 
+                                        doubleValue: Double(restingHeartRate))
+                
+                let sampleTime = calendar.date(byAdding: .minute, value: 1, to: startOfDay) ?? heartRateData.date
+                
+                let sample = HKQuantitySample(
+                    type: heartRateType,
+                    quantity: quantity,
+                    start: startOfDay,
+                    end: sampleTime
+                )
+                allSamples.append(sample)
+            }
         }
+        
+        print("✅ Created \(allSamples.count) heart rate samples from intraday data")
+        return allSamples
+    }
+    
+    private func parseIntradayTime(_ timeString: String, baseDate: Date) -> Date? {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "HH:mm:ss"
+        
+        guard let timeComponents = formatter.date(from: timeString) else {
+            print("❌ Failed to parse intraday time: \(timeString)")
+            return nil
+        }
+        
+        let calendar = Calendar.current
+        let timeComps = calendar.dateComponents([.hour, .minute, .second], from: timeComponents)
+        
+        return calendar.date(bySettingHour: timeComps.hour ?? 0, 
+                           minute: timeComps.minute ?? 0, 
+                           second: timeComps.second ?? 0, 
+                           of: baseDate)
     }
     
     private func createSleepSamples(from sleepData: [SleepData]) -> [HKCategorySample] {

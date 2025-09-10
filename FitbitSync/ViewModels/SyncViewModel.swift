@@ -148,22 +148,71 @@ class SyncViewModel: ObservableObject {
     }
     
     private func performEnhancedSync() {
-        // Phase 1: Fetch and Store Data Locally
-        DispatchQueue.main.async {
-            self.syncStatus = "📦 Fetching data from Fitbit..."
+        // Determine which dates need syncing (current day + partially synced days ONLY)
+        let today = Date()
+        let calendar = Calendar.current
+        var datesToSync = Set<Date>()
+        
+        // Always include current day
+        datesToSync.insert(calendar.startOfDay(for: today))
+        print("🔄 Regular sync: always including current day")
+        
+        // Add partially synced dates (any date that has some synced data but incomplete)
+        let partiallySyncedDates = syncTracker.getPartiallySyncedDates()
+        for date in partiallySyncedDates {
+            datesToSync.insert(calendar.startOfDay(for: date))
         }
         
-        fitbitAPIManager.fetchAllData { [weak self] fitbitData in
-            guard let self = self, let fitbitData = fitbitData else {
+        let finalDatesToSync = Array(datesToSync).sorted()
+        
+        DispatchQueue.main.async {
+            if finalDatesToSync.count > 3 {
+                self.syncStatus = "📦 Fetching data for \(finalDatesToSync.count) dates (this may take a while due to rate limits)..."
+            } else if finalDatesToSync.count > 1 {
+                self.syncStatus = "📦 Fetching data for current day + \(finalDatesToSync.count - 1) partial day(s)..."
+            } else {
+                self.syncStatus = "📦 Fetching current day data from Fitbit..."
+            }
+        }
+        
+        print("🔄 Regular sync: fetching data for \(finalDatesToSync.count) dates")
+        print("🔄   Current day: \(formatDateForLog(today))")
+        if partiallySyncedDates.count > 0 {
+            print("🔄   Partial days: \(partiallySyncedDates.map { formatDateForLog($0) }.joined(separator: ", "))")
+        }
+        
+        // Phase 1: Fetch and Store Data Locally
+        fitbitAPIManager.fetchAllData(for: finalDatesToSync) { [weak self] fitbitData in
+            guard let self = self else { return }
+            
+            guard let fitbitData = fitbitData else {
                 DispatchQueue.main.async {
-                    self?.syncStatus = "❌ Failed to fetch data from Fitbit"
-                    self?.isSyncing = false
+                    // Check if this was due to rate limiting
+                    if self.fitbitAPIManager.isRateLimited() {
+                        if let resetTime = self.fitbitAPIManager.getRateLimitResetTime() {
+                            let formatter = DateFormatter()
+                            formatter.timeStyle = .short
+                            let resetTimeString = formatter.string(from: resetTime)
+                            self.syncStatus = "⏱️ Rate limited by Fitbit. Please try again after \(resetTimeString) (about 1 hour)"
+                        } else {
+                            self.syncStatus = "⏱️ Rate limited by Fitbit. Please try again in about 1 hour"
+                        }
+                    } else {
+                        self.syncStatus = "❌ Failed to fetch data from Fitbit"
+                    }
+                    self.isSyncing = false
                 }
                 return
             }
             
             self.storeDataLocally(fitbitData: fitbitData)
         }
+    }
+    
+    private func formatDateForLog(_ date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "MMM d"
+        return formatter.string(from: date)
     }
     
     private func storeDataLocally(fitbitData: FitbitData) {

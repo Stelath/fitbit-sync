@@ -37,9 +37,11 @@ struct StepData: Codable {
 // MARK: - Heart Rate Data
 struct HeartRateResponse: Codable {
     let activities_heart: [HeartRateDataPoint]
+    let activities_heart_intraday: HeartRateIntradayResponse?
     
     enum CodingKeys: String, CodingKey {
         case activities_heart = "activities-heart"
+        case activities_heart_intraday = "activities-heart-intraday"
     }
 }
 
@@ -62,10 +64,22 @@ struct HeartRateZone: Codable {
     let name: String
 }
 
+struct HeartRateIntradayResponse: Codable {
+    let dataset: [IntradayHeartRate]
+    let datasetInterval: Int
+    let datasetType: String
+}
+
+struct IntradayHeartRate: Codable {
+    let time: String
+    let value: Int
+}
+
 struct HeartRateData: Codable {
     let date: Date
     let restingHeartRate: Int?
     let zones: [HeartRateZone]
+    let intradayReadings: [IntradayHeartRate]
 }
 
 // MARK: - Sleep Data
@@ -180,4 +194,15 @@ struct TokenResponse: Codable {
     let scope: String
     let token_type: String
     let user_id: String
+}
+
+// MARK: - Error Response
+struct FitbitErrorResponse: Codable {
+    let error: FitbitError
+}
+
+struct FitbitError: Codable {
+    let code: Int
+    let message: String
+    let status: String
 }

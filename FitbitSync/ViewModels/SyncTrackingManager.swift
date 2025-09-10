@@ -189,6 +189,21 @@ class SyncTrackingManager: ObservableObject {
         }.sorted { $0.date > $1.date }
     }
     
+    func getPartiallySyncedDates() -> [Date] {
+        // Get all dates that have partial sync data (some synced, some not)
+        // No date limit - check all stored statuses
+        let partiallySyncedStatuses = syncStatuses.values.filter { status in
+            status.hasPartialData
+        }
+        
+        print("🔍 Found \(partiallySyncedStatuses.count) partially synced dates")
+        for status in partiallySyncedStatuses {
+            print("🔍   \(formatDateKey(status.date)): steps=\(status.steps.rawValue), hr=\(status.heartRate.rawValue), sleep=\(status.sleep.rawValue), distance=\(status.distance.rawValue)")
+        }
+        
+        return partiallySyncedStatuses.map { $0.date }.sorted()
+    }
+    
     // MARK: - Bulk Operations
     
     func clearSyncHistory() {
