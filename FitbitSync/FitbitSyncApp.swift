@@ -9,9 +9,11 @@ import SwiftUI
 
 @main
 struct FitbitSyncApp: App {
+    @StateObject private var syncViewModel = SyncViewModel()
+    
     var body: some Scene {
         WindowGroup {
-            ContentView()
+            ContentView().environmentObject(syncViewModel)
         }
     }
 }

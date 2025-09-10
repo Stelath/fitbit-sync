@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleTypeRole</key>
+			<string>Editor</string>
+			<key>CFBundleURLName</key>
+			<string>com.stelath.FitSync</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>fitsync</string>
+			</array>
+		</dict>
+	</array>
+	<key>NSHealthShareUsageDescription</key>
+	<string>This app needs access to HealthKit to sync your Fitbit data (steps, heart rate, sleep, and distance) to Apple Health.</string>
+	<key>NSHealthUpdateUsageDescription</key>
+	<string>This app writes your Fitbit health data to Apple Health to keep your health information synchronized across all your devices.</string>
+</dict>
+</plist>
