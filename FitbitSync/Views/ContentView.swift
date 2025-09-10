@@ -11,15 +11,26 @@ struct ContentView: View {
     @EnvironmentObject var syncViewModel: SyncViewModel
 
     var body: some View {
-        NavigationView {
-            if syncViewModel.isAuthenticated {
-                MainSyncView()
-            } else {
+        if syncViewModel.isAuthenticated {
+            TabView {
+                NavigationView {
+                    MainSyncView()
+                }
+                .tabItem {
+                    Image(systemName: "arrow.triangle.2.circlepath")
+                    Text("Sync")
+                }
+                
+                CalendarView()
+                    .tabItem {
+                        Image(systemName: "calendar")
+                        Text("Calendar")
+                    }
+            }
+        } else {
+            NavigationView {
                 AuthenticationView()
             }
-        }
-        .onAppear {
-            syncViewModel.checkAuthentication()
         }
     }
 }

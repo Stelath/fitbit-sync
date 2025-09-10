@@ -313,10 +313,17 @@ class FitbitAPIManager: NSObject, ObservableObject {
                 return
             }
             
+            print("🛏️ Raw sleep response: \(response.sleep.count) sleep logs")
+            
             let sleepData = response.sleep.compactMap { sleepLog -> SleepData? in
+                print("🛏️ Processing sleep log: \(sleepLog.dateOfSleep), start: \(sleepLog.startTime), end: \(sleepLog.endTime)")
+                
                 guard let date = self.parseAPIDate(sleepLog.dateOfSleep),
                       let startTime = self.parseAPIDateTime(sleepLog.startTime),
-                      let endTime = self.parseAPIDateTime(sleepLog.endTime) else { return nil }
+                      let endTime = self.parseAPIDateTime(sleepLog.endTime) else { 
+                    print("❌ Failed to parse sleep dates")
+                    return nil 
+                }
                 
                 var stages: SleepStages?
                 if let summary = sleepLog.levels?.summary {
@@ -326,9 +333,12 @@ class FitbitAPIManager: NSObject, ObservableObject {
                         rem: summary.rem?.minutes ?? 0,
                         wake: summary.wake?.minutes ?? 0
                     )
+                    print("🛏️ Sleep stages: deep=\(stages?.deep ?? 0), light=\(stages?.light ?? 0), rem=\(stages?.rem ?? 0), wake=\(stages?.wake ?? 0)")
+                } else {
+                    print("⚠️ No sleep stages available in API response")
                 }
                 
-                return SleepData(
+                let sleepData = SleepData(
                     date: date,
                     startTime: startTime,
                     endTime: endTime,
@@ -338,7 +348,12 @@ class FitbitAPIManager: NSObject, ObservableObject {
                     efficiency: sleepLog.efficiency,
                     stages: stages
                 )
+                
+                print("✅ Created sleep data: \(sleepData)")
+                return sleepData
             }
+            
+            print("🛏️ Final processed sleep data count: \(sleepData.count)")
             completion(sleepData)
         }
     }
@@ -552,8 +567,23 @@ class FitbitAPIManager: NSObject, ObservableObject {
     
     private func parseAPIDateTime(_ dateTimeString: String) -> Date? {
         let formatter = DateFormatter()
-        formatter.dateFormat = "yyyy-MM-dd'T'HH:mm:ss.SSS"
-        return formatter.date(from: dateTimeString)
+        
+        // Try different formats that Fitbit might use
+        let formats = [
+            "yyyy-MM-dd'T'HH:mm:ss.SSS",
+            "yyyy-MM-dd'T'HH:mm:ss",
+            "yyyy-MM-dd HH:mm:ss"
+        ]
+        
+        for format in formats {
+            formatter.dateFormat = format
+            if let date = formatter.date(from: dateTimeString) {
+                return date
+            }
+        }
+        
+        print("❌ Could not parse datetime: \(dateTimeString)")
+        return nil
     }
 }
 

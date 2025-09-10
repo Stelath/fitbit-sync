@@ -37,35 +37,43 @@ class HealthKitManager {
         }
     }
 
-    func saveData(fitbitData: FitbitData, selectedDataTypes: Set<DataType>, completion: @escaping (Bool, Error?) -> Void) {
+    func saveData(fitbitData: FitbitData, selectedDataTypes: Set<DataType>, syncTracker: SyncTrackingManager, completion: @escaping (Bool, Error?) -> Void) {
         var allSamples: [HKSample] = []
         
-        // Save steps data
+        // Save steps data (filter duplicates)
         if selectedDataTypes.contains(.steps) {
-            let stepSamples = createStepSamples(from: fitbitData.stepsData)
+            let filteredSteps = syncTracker.filterNonDuplicateData(fitbitData.stepsData, dataType: .steps) { $0.date }
+            let stepSamples = createStepSamples(from: filteredSteps)
             allSamples.append(contentsOf: stepSamples)
+            print("📊 Steps: \(fitbitData.stepsData.count) total, \(filteredSteps.count) new, \(stepSamples.count) samples created")
         }
         
-        // Save distance data
+        // Save distance data (filter duplicates)
         if selectedDataTypes.contains(.distance) {
-            let distanceSamples = createDistanceSamples(from: fitbitData.distanceData)
+            let filteredDistance = syncTracker.filterNonDuplicateData(fitbitData.distanceData, dataType: .distance) { $0.date }
+            let distanceSamples = createDistanceSamples(from: filteredDistance)
             allSamples.append(contentsOf: distanceSamples)
+            print("📊 Distance: \(fitbitData.distanceData.count) total, \(filteredDistance.count) new, \(distanceSamples.count) samples created")
         }
         
-        // Save heart rate data
+        // Save heart rate data (filter duplicates)
         if selectedDataTypes.contains(.heartRate) {
-            let heartRateSamples = createHeartRateSamples(from: fitbitData.heartRateData)
+            let filteredHeartRate = syncTracker.filterNonDuplicateData(fitbitData.heartRateData, dataType: .heartRate) { $0.date }
+            let heartRateSamples = createHeartRateSamples(from: filteredHeartRate)
             allSamples.append(contentsOf: heartRateSamples)
+            print("📊 Heart Rate: \(fitbitData.heartRateData.count) total, \(filteredHeartRate.count) new, \(heartRateSamples.count) samples created")
         }
         
-        // Save sleep data
+        // Save sleep data (filter duplicates)
         if selectedDataTypes.contains(.sleep) {
-            let sleepSamples = createSleepSamples(from: fitbitData.sleepData)
+            let filteredSleep = syncTracker.filterNonDuplicateData(fitbitData.sleepData, dataType: .sleep) { $0.date }
+            let sleepSamples = createSleepSamples(from: filteredSleep)
             allSamples.append(contentsOf: sleepSamples)
+            print("📊 Sleep: \(fitbitData.sleepData.count) total, \(filteredSleep.count) new, \(sleepSamples.count) samples created")
         }
         
         guard !allSamples.isEmpty else {
-            print("⚠️ No samples to save")
+            print("⚠️ No new samples to save (all data already synced)")
             completion(true, nil)
             return
         }
@@ -174,20 +182,30 @@ class HealthKitManager {
         
         var samples: [HKCategorySample] = []
         
+        print("🛏️ Processing \(sleepData.count) sleep records")
+        
         for sleep in sleepData {
-            // Main sleep sample
+            print("🛏️ Sleep record: \(sleep.startTime) to \(sleep.endTime), duration: \(sleep.duration/3600) hours")
+            
+            // Main sleep sample - this represents the overall sleep period
             let mainSleepSample = HKCategorySample(
                 type: sleepType,
-                value: HKCategoryValueSleepAnalysis.asleepUnspecified.rawValue,
+                value: HKCategoryValueSleepAnalysis.inBed.rawValue,
                 start: sleep.startTime,
                 end: sleep.endTime
             )
             samples.append(mainSleepSample)
+            print("🛏️ Added main sleep sample: inBed from \(sleep.startTime) to \(sleep.endTime)")
             
             // Add sleep stage samples if available
             if let stages = sleep.stages {
+                print("🛏️ Sleep stages available: deep=\(stages.deep)min, light=\(stages.light)min, rem=\(stages.rem)min, wake=\(stages.wake)min")
+                
                 let totalMinutes = stages.deep + stages.light + stages.rem + stages.wake
-                guard totalMinutes > 0 else { continue }
+                guard totalMinutes > 0 else { 
+                    print("⚠️ No sleep stage data available")
+                    continue 
+                }
                 
                 var currentTime = sleep.startTime
                 let totalDuration = sleep.endTime.timeIntervalSince(sleep.startTime)
@@ -204,6 +222,7 @@ class HealthKitManager {
                         end: deepEndTime
                     )
                     samples.append(deepSample)
+                    print("🛏️ Added deep sleep: \(currentTime) to \(deepEndTime)")
                     currentTime = deepEndTime
                 }
                 
@@ -219,6 +238,7 @@ class HealthKitManager {
                         end: lightEndTime
                     )
                     samples.append(lightSample)
+                    print("🛏️ Added light sleep: \(currentTime) to \(lightEndTime)")
                     currentTime = lightEndTime
                 }
                 
@@ -234,11 +254,15 @@ class HealthKitManager {
                         end: remEndTime
                     )
                     samples.append(remSample)
+                    print("🛏️ Added REM sleep: \(currentTime) to \(remEndTime)")
                     currentTime = remEndTime
                 }
+            } else {
+                print("⚠️ No sleep stages available for this record")
             }
         }
         
+        print("🛏️ Created \(samples.count) total sleep samples")
         return samples
     }
 }

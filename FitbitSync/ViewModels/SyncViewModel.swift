@@ -18,6 +18,7 @@ class SyncViewModel: ObservableObject {
 
     private let fitbitAPIManager = FitbitAPIManager()
     private let healthKitManager = HealthKitManager()
+    let syncTracker = SyncTrackingManager()
 
     init() {
         checkAuthentication()
@@ -90,7 +91,8 @@ class SyncViewModel: ObservableObject {
                             
                             self.healthKitManager.saveData(
                                 fitbitData: fitbitData,
-                                selectedDataTypes: self.selectedDataTypes
+                                selectedDataTypes: self.selectedDataTypes,
+                                syncTracker: self.syncTracker
                             ) { success, error in
                                 DispatchQueue.main.async {
                                     self.isSyncing = false
