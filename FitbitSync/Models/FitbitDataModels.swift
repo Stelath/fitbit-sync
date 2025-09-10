@@ -29,7 +29,7 @@ struct StepDataPoint: Codable {
     let value: String
 }
 
-struct StepData {
+struct StepData: Codable {
     let date: Date
     let steps: Int
 }
@@ -62,7 +62,7 @@ struct HeartRateZone: Codable {
     let name: String
 }
 
-struct HeartRateData {
+struct HeartRateData: Codable {
     let date: Date
     let restingHeartRate: Int?
     let zones: [HeartRateZone]
@@ -116,7 +116,7 @@ struct SleepStageInfo: Codable {
     let thirtyDayAvgMinutes: Int?
 }
 
-struct SleepData {
+struct SleepData: Codable {
     let date: Date
     let startTime: Date
     let endTime: Date
@@ -127,7 +127,7 @@ struct SleepData {
     let stages: SleepStages?
 }
 
-struct SleepStages {
+struct SleepStages: Codable {
     let deep: Int
     let light: Int
     let rem: Int
@@ -148,7 +148,7 @@ struct DistanceDataPoint: Codable {
     let value: String
 }
 
-struct DistanceData {
+struct DistanceData: Codable {
     let date: Date
     let distance: Double // in kilometers
 }

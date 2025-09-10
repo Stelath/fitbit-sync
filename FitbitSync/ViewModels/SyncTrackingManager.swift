@@ -129,6 +129,30 @@ class SyncTrackingManager: ObservableObject {
         updateStatistics()
     }
     
+    func updateSyncStatus(for date: Date, dataType: DataType, status: SyncState) {
+        let dateKey = formatDateKey(date)
+        var syncStatus = syncStatuses[dateKey] ?? SyncStatus(date: date)
+        
+        switch dataType {
+        case .steps:
+            syncStatus.steps = status
+        case .heartRate:
+            syncStatus.heartRate = status
+        case .sleep:
+            syncStatus.sleep = status
+        case .distance:
+            syncStatus.distance = status
+        }
+        
+        if status == .synced {
+            syncStatus.lastSuccessfulSync = Date()
+        }
+        
+        syncStatuses[dateKey] = syncStatus
+        saveSyncStatuses()
+        updateStatistics()
+    }
+    
     func getSyncStatus(for date: Date) -> SyncStatus {
         let dateKey = formatDateKey(date)
         return syncStatuses[dateKey] ?? SyncStatus(date: date)
@@ -171,6 +195,15 @@ class SyncTrackingManager: ObservableObject {
         syncStatuses.removeAll()
         saveSyncStatuses()
         updateStatistics()
+        print("✅ Cleared all sync history data")
+    }
+    
+    func clearAllStoredData() {
+        // Clear UserDefaults sync data
+        userDefaults.removeObject(forKey: syncStatusKey)
+        syncStatuses.removeAll()
+        updateStatistics()
+        print("✅ Cleared all stored sync tracking data")
     }
     
     func resetFailedSyncs() {
@@ -240,9 +273,20 @@ class SyncTrackingManager: ObservableObject {
         
         do {
             syncStatuses = try JSONDecoder().decode([String: SyncStatus].self, from: data)
+            print("✅ Successfully loaded \(syncStatuses.count) sync statuses")
         } catch {
             print("❌ Failed to load sync statuses: \(error)")
+            print("🔄 Clearing corrupt sync status data and starting fresh")
+            
+            // Clear the corrupt data and start fresh
+            userDefaults.removeObject(forKey: syncStatusKey)
             syncStatuses = [:]
+            
+            // Optionally trigger a fresh scan to rebuild the data
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+                // This will be called from SyncViewModel if needed
+                print("💡 Consider running a fresh HealthKit scan to rebuild sync status data")
+            }
         }
     }
     

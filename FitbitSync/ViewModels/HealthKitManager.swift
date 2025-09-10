@@ -38,45 +38,100 @@ class HealthKitManager {
     }
 
     func saveData(fitbitData: FitbitData, selectedDataTypes: Set<DataType>, syncTracker: SyncTrackingManager, completion: @escaping (Bool, Error?) -> Void) {
-        var allSamples: [HKSample] = []
-        
-        // Save steps data (filter duplicates)
+        // Build date lists per data type
+        let stepDates = Set(fitbitData.stepsData.map { Calendar.current.startOfDay(for: $0.date) })
+        let distanceDates = Set(fitbitData.distanceData.map { Calendar.current.startOfDay(for: $0.date) })
+        let heartRateDates = Set(fitbitData.heartRateData.map { Calendar.current.startOfDay(for: $0.date) })
+        let sleepDates = Set(fitbitData.sleepData.map { Calendar.current.startOfDay(for: $0.date) })
+
+        // Query HealthKit to detect existing samples written by this app for each date/type
+        let group = DispatchGroup()
+        var existingStepDates = Set<Date>()
+        var existingDistanceDates = Set<Date>()
+        var existingHeartRateDates = Set<Date>()
+        var existingSleepDates = Set<Date>()
+
+        // Check for existing data for each selected data type
         if selectedDataTypes.contains(.steps) {
-            let filteredSteps = syncTracker.filterNonDuplicateData(fitbitData.stepsData, dataType: .steps) { $0.date }
-            let stepSamples = createStepSamples(from: filteredSteps)
-            allSamples.append(contentsOf: stepSamples)
-            print("📊 Steps: \(fitbitData.stepsData.count) total, \(filteredSteps.count) new, \(stepSamples.count) samples created")
+            for date in stepDates {
+                group.enter()
+                self.checkExistingHealthKitData(for: date, dataType: .steps) { exists in
+                    if exists { existingStepDates.insert(date) }
+                    group.leave()
+                }
+            }
         }
         
-        // Save distance data (filter duplicates)
         if selectedDataTypes.contains(.distance) {
-            let filteredDistance = syncTracker.filterNonDuplicateData(fitbitData.distanceData, dataType: .distance) { $0.date }
-            let distanceSamples = createDistanceSamples(from: filteredDistance)
-            allSamples.append(contentsOf: distanceSamples)
-            print("📊 Distance: \(fitbitData.distanceData.count) total, \(filteredDistance.count) new, \(distanceSamples.count) samples created")
+            for date in distanceDates {
+                group.enter()
+                self.checkExistingHealthKitData(for: date, dataType: .distance) { exists in
+                    if exists { existingDistanceDates.insert(date) }
+                    group.leave()
+                }
+            }
         }
         
-        // Save heart rate data (filter duplicates)
         if selectedDataTypes.contains(.heartRate) {
-            let filteredHeartRate = syncTracker.filterNonDuplicateData(fitbitData.heartRateData, dataType: .heartRate) { $0.date }
-            let heartRateSamples = createHeartRateSamples(from: filteredHeartRate)
-            allSamples.append(contentsOf: heartRateSamples)
-            print("📊 Heart Rate: \(fitbitData.heartRateData.count) total, \(filteredHeartRate.count) new, \(heartRateSamples.count) samples created")
+            for date in heartRateDates {
+                group.enter()
+                self.checkExistingHealthKitData(for: date, dataType: .heartRate) { exists in
+                    if exists { existingHeartRateDates.insert(date) }
+                    group.leave()
+                }
+            }
         }
         
-        // Save sleep data (filter duplicates)
         if selectedDataTypes.contains(.sleep) {
-            let filteredSleep = syncTracker.filterNonDuplicateData(fitbitData.sleepData, dataType: .sleep) { $0.date }
-            let sleepSamples = createSleepSamples(from: filteredSleep)
-            allSamples.append(contentsOf: sleepSamples)
-            print("📊 Sleep: \(fitbitData.sleepData.count) total, \(filteredSleep.count) new, \(sleepSamples.count) samples created")
+            for date in sleepDates {
+                group.enter()
+                self.checkExistingHealthKitData(for: date, dataType: .sleep) { exists in
+                    if exists { existingSleepDates.insert(date) }
+                    group.leave()
+                }
+            }
         }
-        
-        guard !allSamples.isEmpty else {
-            print("⚠️ No new samples to save (all data already synced)")
-            completion(true, nil)
-            return
-        }
+
+        group.notify(queue: .main) {
+            var allSamples: [HKSample] = []
+
+            // Steps
+            if selectedDataTypes.contains(.steps) {
+                let filteredSteps = fitbitData.stepsData.filter { !existingStepDates.contains(Calendar.current.startOfDay(for: $0.date)) }
+                let stepSamples = self.createStepSamples(from: filteredSteps)
+                allSamples.append(contentsOf: stepSamples)
+                print("📊 Steps: \(fitbitData.stepsData.count) total, \(filteredSteps.count) new, \(stepSamples.count) samples created (skipped \(existingStepDates.count) days)")
+            }
+
+            // Distance
+            if selectedDataTypes.contains(.distance) {
+                let filteredDistance = fitbitData.distanceData.filter { !existingDistanceDates.contains(Calendar.current.startOfDay(for: $0.date)) }
+                let distanceSamples = self.createDistanceSamples(from: filteredDistance)
+                allSamples.append(contentsOf: distanceSamples)
+                print("📊 Distance: \(fitbitData.distanceData.count) total, \(filteredDistance.count) new, \(distanceSamples.count) samples created (skipped \(existingDistanceDates.count) days)")
+            }
+
+            // Heart Rate (resting per day currently)
+            if selectedDataTypes.contains(.heartRate) {
+                let filteredHeartRate = fitbitData.heartRateData.filter { !existingHeartRateDates.contains(Calendar.current.startOfDay(for: $0.date)) }
+                let heartRateSamples = self.createHeartRateSamples(from: filteredHeartRate)
+                allSamples.append(contentsOf: heartRateSamples)
+                print("📊 Heart Rate: \(fitbitData.heartRateData.count) total, \(filteredHeartRate.count) new, \(heartRateSamples.count) samples created (skipped \(existingHeartRateDates.count) days)")
+            }
+
+            // Sleep
+            if selectedDataTypes.contains(.sleep) {
+                let filteredSleep = fitbitData.sleepData.filter { !existingSleepDates.contains(Calendar.current.startOfDay(for: $0.date)) }
+                let sleepSamples = self.createSleepSamples(from: filteredSleep)
+                allSamples.append(contentsOf: sleepSamples)
+                print("📊 Sleep: \(fitbitData.sleepData.count) total, \(filteredSleep.count) new, \(sleepSamples.count) samples created (skipped \(existingSleepDates.count) days)")
+            }
+
+            guard !allSamples.isEmpty else {
+                print("⚠️ No new samples to save (all data already present in Health)")
+                completion(true, nil)
+                return
+            }
         
         print("💾 Saving \(allSamples.count) samples to HealthKit...")
         
@@ -89,7 +144,7 @@ class HealthKitManager {
             }
         }
         
-        healthStore.save(allSamples) { success, error in
+        self.healthStore.save(allSamples) { success, error in
             DispatchQueue.main.async {
                 if success {
                     print("✅ Successfully saved \(allSamples.count) samples to HealthKit")
@@ -98,8 +153,9 @@ class HealthKitManager {
                 } else {
                     print("❌ Failed to save samples: \(error?.localizedDescription ?? "Unknown error")")
                 }
-                completion(success, error)
+            completion(success, error)
             }
+        }
         }
     }
     
@@ -119,8 +175,8 @@ class HealthKitManager {
             let endOfDay = Calendar.current.date(byAdding: .day, value: 1, to: startOfDay) ?? stepData.date
             
             return HKQuantitySample(
-                type: stepCountType,
-                quantity: quantity,
+                    type: stepCountType,
+                    quantity: quantity,
                 start: startOfDay,
                 end: endOfDay
             )
@@ -264,6 +320,68 @@ class HealthKitManager {
         
         print("🛏️ Created \(samples.count) total sleep samples")
         return samples
+    }
+    
+    // MARK: - Duplicate Detection (HealthKit lookup)
+    func checkExistingHealthKitData(for date: Date, dataType: DataType, completion: @escaping (Bool) -> Void) {
+        let calendar = Calendar.current
+        let startOfDay = calendar.startOfDay(for: date)
+        let endOfDay = calendar.date(byAdding: .day, value: 1, to: startOfDay) ?? date
+        
+        let predicate = HKQuery.predicateForSamples(
+            withStart: startOfDay,
+            end: endOfDay,
+            options: .strictStartDate
+        )
+        
+        let sampleType: HKSampleType
+        switch dataType {
+        case .steps:
+            sampleType = HKQuantityType.quantityType(forIdentifier: .stepCount)!
+        case .distance:
+            sampleType = HKQuantityType.quantityType(forIdentifier: .distanceWalkingRunning)!
+        case .heartRate:
+            sampleType = HKQuantityType.quantityType(forIdentifier: .heartRate)!
+        case .sleep:
+            sampleType = HKCategoryType.categoryType(forIdentifier: .sleepAnalysis)!
+        }
+        
+        // Restrict to samples written by this app
+        // Get our app's bundle identifier for more precise filtering
+        let bundleId = Bundle.main.bundleIdentifier ?? "com.yourcompany.FitbitSync"
+        let sourcePredicate = HKQuery.predicateForObjects(from: HKSource.default())
+        let combinedPredicate = NSCompoundPredicate(andPredicateWithSubpredicates: [predicate, sourcePredicate])
+        
+        print("🔍 Checking for existing \(dataType.displayName) data on \(date) from app: \(bundleId)")
+        
+        let query = HKSampleQuery(
+            sampleType: sampleType,
+            predicate: combinedPredicate,
+            limit: HKObjectQueryNoLimit,
+            sortDescriptors: nil
+        ) { [weak self] _, samples, error in
+            DispatchQueue.main.async {
+                if let error = error {
+                    print("❌ Error checking existing HealthKit data for \(dataType.displayName) on \(date): \(error.localizedDescription)")
+                    completion(false)
+                    return
+                }
+                
+                let hasExistingData = !(samples?.isEmpty ?? true)
+                print("🔍 Checking \(dataType.displayName) on \(date): Found \(samples?.count ?? 0) existing samples from our app")
+                
+                // Debug: Print source info for existing samples
+                if let samples = samples, !samples.isEmpty {
+                    for sample in samples.prefix(3) { // Just first few for debugging
+                        print("📱 Existing sample source: \(sample.sourceRevision.source.name) - \(sample.sourceRevision.source.bundleIdentifier)")
+                    }
+                }
+                
+                completion(hasExistingData)
+            }
+        }
+        
+        healthStore.execute(query)
     }
 }
 

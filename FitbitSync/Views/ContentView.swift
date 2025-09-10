@@ -6,30 +6,40 @@
 //
 
 import SwiftUI
+import SwiftData
 
 struct ContentView: View {
     @EnvironmentObject var syncViewModel: SyncViewModel
+    @Environment(\.modelContext) private var modelContext
 
     var body: some View {
-        if syncViewModel.isAuthenticated {
-            TabView {
-                NavigationView {
-                    MainSyncView()
-                }
-                .tabItem {
-                    Image(systemName: "arrow.triangle.2.circlepath")
-                    Text("Sync")
-                }
-                
-                CalendarView()
-                    .tabItem {
-                        Image(systemName: "calendar")
-                        Text("Calendar")
+        Group {
+            if syncViewModel.isAuthenticated {
+                TabView {
+                    NavigationView {
+                        MainSyncView()
                     }
-            }
-        } else {
-            NavigationView {
-                AuthenticationView()
+                    .tabItem {
+                        Image(systemName: "arrow.triangle.2.circlepath")
+                        Text("Sync")
+                    }
+                    
+                    CalendarView()
+                        .tabItem {
+                            Image(systemName: "calendar")
+                            Text("Calendar")
+                        }
+                }
+                .onAppear {
+                    syncViewModel.setModelContext(modelContext)
+                }
+            } else {
+                NavigationView {
+                    AuthenticationView()
+                }
+                .onAppear {
+                    syncViewModel.setModelContext(modelContext)
+                }
             }
         }
     }
@@ -184,6 +194,12 @@ struct SyncStatusCard: View {
                 } else if syncViewModel.syncStatus.contains("❌") {
                     Image(systemName: "xmark.circle.fill")
                         .foregroundColor(.red)
+                } else if syncViewModel.syncStatus.contains("⚠️") {
+                    Image(systemName: "exclamationmark.triangle.fill")
+                        .foregroundColor(.orange)
+                } else if syncViewModel.syncStatus.contains("🔍") {
+                    Image(systemName: "magnifyingglass")
+                        .foregroundColor(.purple)
                 }
                 
                 Text(syncViewModel.syncStatus)
@@ -193,9 +209,13 @@ struct SyncStatusCard: View {
                 Spacer()
             }
             .padding()
-            .background(syncViewModel.syncStatus.contains("✅") ? Color.green.opacity(0.1) :
-                       syncViewModel.syncStatus.contains("❌") ? Color.red.opacity(0.1) :
-                       Color.blue.opacity(0.1))
+            .background(
+                syncViewModel.syncStatus.contains("✅") ? Color.green.opacity(0.1) :
+                syncViewModel.syncStatus.contains("❌") ? Color.red.opacity(0.1) :
+                syncViewModel.syncStatus.contains("⚠️") ? Color.orange.opacity(0.1) :
+                syncViewModel.syncStatus.contains("🔍") ? Color.purple.opacity(0.1) :
+                Color.blue.opacity(0.1)
+            )
             .cornerRadius(8)
         }
     }

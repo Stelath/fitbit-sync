@@ -39,7 +39,9 @@ struct CalendarView: View {
                     QuickActionsCard(
                         onLongSync: { showingLongSync = true },
                         onResetFailed: { syncViewModel.syncTracker.resetFailedSyncs() },
-                        syncTracker: syncViewModel.syncTracker
+                        onRetryFailed: { syncViewModel.retryFailedSyncs() },
+                        syncTracker: syncViewModel.syncTracker,
+                        syncViewModel: syncViewModel
                     )
                     
                     Spacer(minLength: 20)
@@ -48,6 +50,15 @@ struct CalendarView: View {
             }
             .navigationTitle("Sync Calendar")
             .navigationBarTitleDisplayMode(.large)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button("Refresh") {
+                        syncViewModel.scanHealthKitForSyncStatus()
+                    }
+                    .font(.subheadline)
+                }
+            }
+            // Removed automatic scanning onAppear for performance
             .sheet(isPresented: $showingLongSync) {
                 LongSyncView()
                     .environmentObject(syncViewModel)
@@ -192,13 +203,21 @@ struct CalendarDayView: View {
     
     private var backgroundColor: Color {
         if let status = syncStatus {
-            if status.allDataSynced {
-                return .green.opacity(0.2)
-            } else if status.steps == .failed || status.heartRate == .failed || 
-                     status.sleep == .failed || status.distance == .failed {
+            // Check verification status first
+            switch status.verificationStatus {
+            case .verified:
+                return .green.opacity(0.3)
+            case .failed, .partiallyVerified:
                 return .red.opacity(0.2)
-            } else if status.hasAnyData {
-                return .orange.opacity(0.2)
+            case .pending:
+                if status.allDataSynced {
+                    return .yellow.opacity(0.2) // Synced but not yet verified
+                } else if status.steps == .failed || status.heartRate == .failed || 
+                         status.sleep == .failed || status.distance == .failed {
+                    return .red.opacity(0.2)
+                } else if status.hasAnyData {
+                    return .orange.opacity(0.2)
+                }
             }
         }
         return Color.clear
@@ -212,11 +231,18 @@ struct CalendarDayView: View {
             
             // Sync status indicators
             if let status = syncStatus, isCurrentMonth {
-                HStack(spacing: 1) {
-                    SyncStatusDot(state: status.steps)
-                    SyncStatusDot(state: status.heartRate)
-                    SyncStatusDot(state: status.sleep)
-                    SyncStatusDot(state: status.distance)
+                VStack(spacing: 1) {
+                    HStack(spacing: 1) {
+                        SyncStatusDot(state: status.steps)
+                        SyncStatusDot(state: status.heartRate)
+                        SyncStatusDot(state: status.sleep)
+                        SyncStatusDot(state: status.distance)
+                    }
+                    
+                    // Verification indicator
+                    if status.allDataSynced {
+                        VerificationStatusDot(status: status.verificationStatus)
+                    }
                 }
             }
         }
@@ -243,7 +269,7 @@ struct SyncStatusDot: View {
     private var color: Color {
         switch state {
         case .synced:
-            return .green
+            return .yellow  // Changed to yellow since green now means verified
         case .notSynced:
             return .orange
         case .syncing:
@@ -252,6 +278,48 @@ struct SyncStatusDot: View {
             return .red
         case .noData:
             return .gray
+        case .verifying:
+            return .purple
+        case .verified:
+            return .green
+        case .verificationFailed:
+            return .red
+        }
+    }
+}
+
+struct VerificationStatusDot: View {
+    let status: VerificationStatus
+    
+    var body: some View {
+        Image(systemName: iconName)
+            .font(.system(size: 6))
+            .foregroundColor(color)
+    }
+    
+    private var iconName: String {
+        switch status {
+        case .verified:
+            return "checkmark.circle.fill"
+        case .failed:
+            return "xmark.circle.fill"
+        case .partiallyVerified:
+            return "exclamationmark.triangle.fill"
+        case .pending:
+            return "clock.fill"
+        }
+    }
+    
+    private var color: Color {
+        switch status {
+        case .verified:
+            return .green
+        case .failed:
+            return .red
+        case .partiallyVerified:
+            return .orange
+        case .pending:
+            return .blue
         }
     }
 }
@@ -319,7 +387,9 @@ struct StatisticItem: View {
 struct QuickActionsCard: View {
     let onLongSync: () -> Void
     let onResetFailed: () -> Void
+    let onRetryFailed: () -> Void
     let syncTracker: SyncTrackingManager
+    let syncViewModel: SyncViewModel
     
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -348,7 +418,7 @@ struct QuickActionsCard: View {
                 Button(action: onResetFailed) {
                     HStack {
                         Image(systemName: "arrow.clockwise")
-                        Text("Retry Failed Syncs")
+                        Text("Reset Failed Status")
                         Spacer()
                         Text("\(syncTracker.getDaysWithIssues().count)")
                             .fontWeight(.semibold)
@@ -358,6 +428,20 @@ struct QuickActionsCard: View {
                     .cornerRadius(8)
                 }
                 .foregroundColor(.orange)
+                
+                Button(action: onRetryFailed) {
+                    HStack {
+                        Image(systemName: "arrow.triangle.2.circlepath")
+                        Text("Retry Unverified Syncs")
+                        Spacer()
+                        Text("\(syncViewModel.getUnverifiedSyncsCount())")
+                            .fontWeight(.semibold)
+                    }
+                    .padding()
+                    .background(Color.purple.opacity(0.1))
+                    .cornerRadius(8)
+                }
+                .foregroundColor(.purple)
             }
         }
         .padding()

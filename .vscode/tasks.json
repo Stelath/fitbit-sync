@@ -1,0 +1,23 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "Build Xcode Project",
+			"type": "shell",
+			"command": "xcodebuild -project FitbitSync.xcodeproj -scheme FitbitSync -sdk iphonesimulator",
+			"problemMatcher": [
+				"$gcc"
+			],
+			"group": "build"
+		},
+		{
+			"label": "Rebuild Xcode Project after SwiftUI fix",
+			"type": "shell",
+			"command": "xcodebuild -project FitbitSync.xcodeproj -scheme FitbitSync -sdk iphonesimulator",
+			"problemMatcher": [
+				"$gcc"
+			],
+			"group": "build"
+		}
+	]
+}
